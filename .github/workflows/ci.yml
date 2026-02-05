@@ -1,19 +1,51 @@
 name: CI
+
 on:
   push:
+    branches: [ "master", "main" ]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
-      - name: Run checks
+      - name: Cache uv
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('uv.lock') }}
+          restore-keys: |
+            uv-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - name: Install deps (locked)
+        run: uv sync --frozen
+
+      - name: Lint
         run: |
           uv run --frozen ruff check .
-          uv run --frozen pytest
+          uv run --frozen ruff format --check .
+
+      - name: Tests
+        run: uv run --frozen pytest -q
+
+      - name: Install deps (locked)
+        run: uv sync --frozen
